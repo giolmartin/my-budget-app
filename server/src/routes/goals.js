@@ -197,6 +197,12 @@ router.put('/goals/:id', async (req, res, next) => {
       throw err;
     }
 
+    if (!updates.isActive) {
+      res.json({ message: 'Goal deactivated', goal: updatedGoal });
+    } else {
+      res.json({ message: 'Goal is active', goal: updatedGoal });
+    }
+
     res.json(updatedGoal);
   } catch (err) {
     next(err);
@@ -204,28 +210,29 @@ router.put('/goals/:id', async (req, res, next) => {
 });
 
 /** DEMO
- * DELETE /api/goals/:id
+ * PUT /api/goals/:id
  *
  * Soft-delete: set isActive = false
+ * For future Tick UI
  */
+
+// Hard delete
 router.delete('/goals/:id', async (req, res, next) => {
   try {
     const user = await getOrCreateDemoUser();
     const goalId = req.params.id;
 
-    const updatedGoal = await Goal.findOneAndUpdate(
-      { _id: goalId, userId: user._id },
-      { isActive: false },
-      { new: true }
-    );
+    const deleted = await Goal.findOneAndDelete({
+      userId: user._id,
+      _id: goalId,
+    });
 
-    if (!updatedGoal) {
+    if (!deleted) {
       const err = new Error('Goal not found');
       err.statusCode = 404;
       throw err;
     }
-
-    res.json({ message: 'Goal deactivated', goal: updatedGoal });
+    res.json({ message: 'Goal deleted', goalId });
   } catch (err) {
     next(err);
   }

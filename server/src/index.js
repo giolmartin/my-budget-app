@@ -4,6 +4,7 @@ const dotenv = require('dotenv');
 const connectDB = require('./config/db');
 const settingsRoutes = require('./routes/settings');
 const goalsRoutes = require('./routes/goals');
+const budgetRoutes = require('./routes/budgets');
 
 //Load env var
 dotenv.config();
@@ -28,7 +29,7 @@ app.get('/api/health', (req, res) => {
 //Mount under /api
 app.use('/api', settingsRoutes);
 app.use('/api', goalsRoutes);
-
+app.use('/api', budgetRoutes);
 
 //Error Handling middleware.
 //For any next(err) handling it lands here.
