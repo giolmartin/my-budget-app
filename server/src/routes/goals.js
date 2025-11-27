@@ -1,6 +1,7 @@
 const express = require('express');
 const Goal = require('../models/Goals');
 const { getOrCreateDemoUser } = require('../utils/demoUser');
+const { resMinMax } = require('../utils/goalLimits');
 
 const router = express.Router();
 
@@ -53,9 +54,22 @@ router.post('/goals', async (req, res, next) => {
       importance,
       minimumPerPeriod,
       maximumPerPeriod,
-      targetAmount,
+      minimumPerPeriodPercent,
+      maximumPerPeriodPercent,
+      target,
       sortOrder,
     } = req.body;
+
+    const baseIncome = Number(user.baseSalary) || 0;
+    console.log(user.baseSalary, 'Salary', baseIncome);
+
+    const { minAmount, maxAmount, minPercent, maxPercent } = resMinMax({
+      baseIncome,
+      reqMin: minimumPerPeriod,
+      reqMax: maximumPerPeriod,
+      reqMinPercent: minimumPerPeriodPercent,
+      reqMaxPercent: maximumPerPeriodPercent,
+    });
 
     //Validation
     if (!name || typeof name !== 'string' || name.trim() === '') {
@@ -94,9 +108,11 @@ router.post('/goals', async (req, res, next) => {
       name: name.trim(),
       type: type ? type.trim() : 'variable',
       importance: importance ?? 1,
-      minimumPerPeriod: minimumPerPeriod ?? 0,
-      maximumPerPeriod: maximumPerPeriod ?? null,
-      targetAmount: targetAmount ?? null,
+      minimumPerPeriod: minAmount ?? 0,
+      maximumPerPeriod: maxAmount ?? null,
+      minimumPerPeriodPercent: minPercent ?? 0,
+      maximumPerPeriodPercent: maxPercent ?? null,
+      target: target ?? null,
       sortOrder: sortOrder ?? 0,
     });
     res.status(201).json(goal);
@@ -126,17 +142,26 @@ router.put('/goals/:id', async (req, res, next) => {
     const user = await getOrCreateDemoUser();
     const goalId = req.params.id;
 
-    const updates = {};
-    const allowedFields = [
-      'name',
-      'type',
-      'importance',
-      'minimumPerPeriod',
-      'maximumPerPeriod',
-      'targetAmount',
-      'isActive',
-      'sortOrder',
-    ];
+    const goal = await Goal.findOne({ _id: goalId, userId: user._id });
+
+    if (!goal) {
+      const error = new Error('Goal not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const {
+      name,
+      type,
+      importance,
+      minimumPerPeriod,
+      maximumPerPeriod,
+      minimumPerPeriodPercent,
+      maximumPerPeriodPercent,
+      targetAmount,
+      isActive,
+      sortOrder,
+    } = req.body;
 
     // Only allowed fields from body
     for (const field of allowedFields) {
@@ -146,11 +171,11 @@ router.put('/goals/:id', async (req, res, next) => {
     }
 
     // Validation
-    if (updates.importance !== undefined) {
+    if (importance !== undefined) {
       if (
-        typeof updates.importance !== 'number' ||
-        Number.isNaN(updates.importance) ||
-        updates.importance < 0
+        typeof importance !== 'number' ||
+        Number.isNaN(importance) ||
+        importance < 0
       ) {
         const err = new Error('importance must be a number between 1 and 10');
         err.statusCode = 400;
@@ -158,11 +183,23 @@ router.put('/goals/:id', async (req, res, next) => {
       }
     }
 
-    if (updates.minimumPerPeriod !== undefined) {
+    if (minimumPerPeriod !== undefined) {
       if (
-        typeof updates.minimumPerPeriod !== 'number' ||
-        Number.isNaN(updates.minimumPerPeriod) ||
-        updates.minimumPerPeriod < 0
+        typeof minimumPerPeriod !== 'number' ||
+        Number.isNaN(minimumPerPeriod) ||
+        minimumPerPeriod < 0
+      ) {
+        const err = new Error('minimumPerPeriod must be a number above 0');
+        err.statusCode = 400;
+        throw err;
+      }
+    }
+
+    if (targetAmount !== undefined) {
+      if (
+        typeof targetAmount !== 'number' ||
+        Number.isNaN(targetAmount) ||
+        targetAmount < 0
       ) {
         const err = new Error('minimumPerPeriod must be a number above 0');
         err.statusCode = 400;
@@ -171,39 +208,63 @@ router.put('/goals/:id', async (req, res, next) => {
     }
 
     //Update name if exists
-    if (updates.name !== undefined) {
-      if (typeof updates.name !== 'string' || updates.name.trim() === '') {
+    if (name !== undefined) {
+      if (typeof name !== 'string' || name.trim() === '') {
         const err = new Error('name must be letters');
         err.statusCode = 400;
         throw err;
       }
-      updates.name = updates.name.trim();
+      goal.name = name.trim();
     }
 
-    if (updates.type !== undefined && typeof updates.type === 'string') {
-      updates.type = updates.type.trim();
+    if (type !== undefined && typeof type === 'string') {
+      goal.type = type.trim();
     }
 
-    // Find and update goal
-    const updatedGoal = await Goal.findOneAndUpdate(
-      { _id: goalId, userId: user._id },
-      updates,
-      { new: true } // return the updated document
-    );
-
-    if (!updatedGoal) {
-      const err = new Error('Goal not found');
-      err.statusCode = 404;
-      throw err;
+    if (targetAmount !== undefined) {
+      goal.targetAmount = targetAmount;
     }
 
-    if (!updates.isActive) {
-      res.json({ message: 'Goal deactivated', goal: updatedGoal });
+    if (isActive !== undefined) {
+      goal.isActive = Boolean(isActive);
+    }
+
+    if (sortOrder !== undefined) {
+      goal.sortOrder = sortOrder;
+    }
+    const { minAmount, maxAmount, minPercent, maxPercent } = resMinMax({
+      baseIncome,
+      reqMin:
+        minimumPerPeriod !== undefined
+          ? minimumPerPeriod
+          : goal.minimumPerPeriod,
+      reqMax:
+        maximumPerPeriod !== undefined
+          ? maximumPerPeriod
+          : goal.maximumPerPeriod,
+      reqMinPercent:
+        minimumPerPeriodPercent !== undefined
+          ? minimumPerPeriodPercent
+          : goal.minimumPerPeriodPercent,
+      reqMaxPercent:
+        maximumPerPeriodPercent !== undefined
+          ? maximumPerPeriodPercent
+          : goal.maximumPerPeriodPercent,
+    });
+
+    goal.minimumPerPeriod = minAmount ?? 0;
+    goal.maximumPerPeriod = maxAmount ?? null;
+    goal.minimumPerPeriodPercent = minPercent ?? 0;
+    goal.maximumPerPeriodPercent = maxPercent ?? null;
+
+    if (!goal.isActive) {
+      res.json({ message: 'Goal deactivated', goal: goal });
     } else {
-      res.json({ message: 'Goal is active', goal: updatedGoal });
+      res.json({ message: 'Goal is active', goal: goal });
     }
 
-    res.json(updatedGoal);
+    await goal.save();
+    res.json(goal);
   } catch (err) {
     next(err);
   }

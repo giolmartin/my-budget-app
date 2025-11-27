@@ -43,6 +43,17 @@ const goalSchema = new mongoose.Schema(
       default: null,
     },
 
+    //Mirror of  percentage Min and max
+    minimumPerPeriodPercent: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    maximumPerPeriodPercent: {
+      type: Number,
+      default: null,
+    },
+
     //Optional long term target
     target: {
       type: Number,
